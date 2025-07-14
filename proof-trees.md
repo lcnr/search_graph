@@ -1,0 +1,167 @@
+## https://github.com/rust-lang/trait-system-refactor-initiative/issues/109#issuecomment-2674153304
+
+- `A: IntoParallelIterator`
+  - via impl
+    - `A:Sized`
+      - `AliasRelate(A, <D as IntoParallelIterator>::Iter)`
+        - `NormalizesTo(<D as IntoParallelIterator>::Iter)`
+          - via impl
+            - `D: Sized`
+              - `AliasRelate(D, <D as IntoParallelIterator>::Iter)`
+                - `NormalizesTo(<D as IntoParallelIterator>::Iter)` inductive cycle -> `NoSolution`
+              - `AliasRelate(D, <C as IntoParallelIterator>::Iter)`
+                - `NormalizesTo(<C as IntoParallelIterator>::Iter)`
+                  - via impl
+                    - `C: Sized`
+                      - `AliasRelate(C, <D as IntoParallelIterator>::Iter)`
+                        - `NormalizesTo(<D as IntoParallelIterator>::Iter)` inductive cycle -> `NoSolution`
+                      - `AliasRelate(C, <C as IntoParallelIterator>::Iter)`
+                        - `NormalizesTo(<C as IntoParallelIterator>::Iter)` inductive cycle -> `NoSolution`
+                      - `AliasRelate(C, <B as IntoParallelIterator>::Iter)`
+                        - `NormalizesTo(<B as IntoParallelIterator>::Iter)`
+                          - via impl
+                            - `B: Sized`
+                              - `AliasRelate(B, <D as IntoParallelIterator>::Iter)`
+                                - `NormalizesTo(<D as IntoParallelIterator>::Iter)` inductive cycle -> `NoSolution`
+                              - `AliasRelate(B, <C as IntoParallelIterator>::Iter)`
+                                - `NormalizesTo(<C as IntoParallelIterator>::Iter)` inductive cycle -> `NoSolution`
+                              - `AliasRelate(B, <B as IntoParallelIterator>::Iter)`
+                                - `NormalizesTo(<B as IntoParallelIterator>::Iter)` inductive cycle -> `NoSolution`
+                              - `AliasRelate(B, <A as IntoParallelIterator>::Iter)`
+                                - `NormalizesTo(<A as IntoParallelIterator>::Iter)`
+                                  - via impl
+                                    - `A: Sized` inductive cycle -> `NoSolution`
+                                  - via where-bound -> rigid
+                            - `B: ParallelIterator`
+                              - `AliasRelate(B, <D as IntoParallelIterator>::Iter)` provisional cache hit
+                              - `AliasRelate(B, <C as IntoParallelIterator>::Iter)` provisional cache hit
+                              - `AliasRelate(B, <B as IntoParallelIterator>::Iter)` provisional cache hit
+                              - `AliasRelate(B, <A as IntoParallelIterator>::Iter)` provisional cache hit
+                          - via where-bound -> rigid
+                          - changed provisional result, reevaluate
+                            - reevaluate cycle: `[B: Sized, AliasRelate(B, <B as IntoParallelIterator>::Iter), NormalizesTo(<B as IntoParallelIterator>::Iter)]`
+                              - reevaluate `NormalizesTo(<B as IntoParallelIterator>::Iter)` cycle -> rigid
+                              - reevaluate `AliasRelate(B, <B as IntoParallelIterator>::Iter)`
+                                - `NormalizesTo(<B as IntoParallelIterator>::Iter)` cycle rigid
+                            - reevaluate cycle: `[B: ParallelIterator, AliasRelate(B, <B as IntoParallelIterator>::Iter)]`
+                              - reevaluate `AliasRelate(B, <B as IntoParallelIterator>::Iter)` provisional cache hit
+                      - `AliasRelate(C, <A as IntoParallelIterator>::Iter)`
+                        - `NormalizesTo(<A as IntoParallelIterator>::Iter)` provisional cache hit -> `NoSolution`
+                    - `C: ParallelIterator`
+                      - `AliasRelate(C, <D as IntoParallelIterator>::Iter)` provisional cache hit
+                      - `AliasRelate(C, <C as IntoParallelIterator>::Iter)` provisional cache hit
+                      - `AliasRelate(C, <B as IntoParallelIterator>::Iter)` provisional cache hit
+                      - `AliasRelate(C, <A as IntoParallelIterator>::Iter)` provisional cache hit
+                  - changed provisional result, reevaluate
+                    - reevaluate cycle: `[C: Sized, AliasRelate(C, <C as IntoParallelIterator>::Iter), NormalizesTo(<C as IntoParallelIterator>::Iter)]`
+                      - reevaluate `NormalizesTo(<C as IntoParallelIterator>::Iter)` cycle rigid
+                      - reevaluate `AliasRelate(C, <C as IntoParallelIterator>::Iter)`
+                        - `NormalizesTo(<C as IntoParallelIterator>::Iter)` cycle rigid
+                    - reevaluate cycle: `[C: Sized, AliasRelate(C, <B as IntoParallelIterator>::Iter), B: Sized, AliasRelate(B, <C as IntoParallelIterator>::Iter), NormalizesTo(<C as IntoParallelIterator>::Iter)]`
+                      - reevaluate `NormalizesTo(<C as IntoParallelIterator>::Iter)` cycle rigid
+                      - reevaluate `AliasRelate(B, <C as IntoParallelIterator>::Iter)`
+                        - `NormalizesTo(<C as IntoParallelIterator>::Iter)` cycle rigid
+              - `AliasRelate(D, <B as IntoParallelIterator>::Iter)`
+                - `NormalizesTo(<B as IntoParallelIterator>::Iter)` provisional cache hit
+              - `AliasRelate(D, <A as IntoParallelIterator>::Iter)`
+                - `NormalizesTo(<A as IntoParallelIterator>::Iter)` provisional cache hit
+            - `D: ParallelIterator`
+              - `AliasRelate(D, <D as IntoParallelIterator>::Iter)` provisional cache hit
+              - `AliasRelate(D, <C as IntoParallelIterator>::Iter)` provisional cache hit
+              - `AliasRelate(D, <B as IntoParallelIterator>::Iter)` provisional cache hit
+              - `AliasRelate(D, <A as IntoParallelIterator>::Iter)` provisional cache hit
+          - changed provisional result, reevaluate
+            - reevaluate cycle: `[D: Sized, AliasRelate(D, <D as IntoParallelIterator>::Iter), NormalizesTo(<D as IntoParallelIterator>::Iter)]`
+              - reevaluate `NormalizesTo(<D as IntoParallelIterator>::Iter)` cycle rigid
+              - reevaluate `AliasRelate(D, <D as IntoParallelIterator>::Iter)`
+                - `NormalizesTo(<D as IntoParallelIterator>::Iter)` cycle rigid
+            - reevaluate cycle: ...
+
+That's cool, seems fast enough!
+
+## https://github.com/rust-lang/trait-system-refactor-initiative/issues/109#issuecomment-3024468214
+
+- `TraitPredicate(D: IntoParallelIteratorIndir)`
+  - via impl
+    - `TraitPredicate(Box<D>: IntoParallelIterator)`
+      - via impl
+        - `TraitPredicate(Box<D>: ParallelIterator)`
+          - `AliasRelate(Box<D>, <A as IntoParallelIteratorIndir>::Iter)`
+            - `NormalizesTo(<A as IntoParallelIteratorIndir>::Iter)`
+              - via impl
+                - `TraitPredicate(Box<A>: IntoParallelIterator)`
+                  - via impl
+                    - `TraitPredicate(Box<A>: ParallelIterator)`
+                      - `AliasRelate(Box<A>, <A as IntoParallelIteratorIndir>::Iter)`
+                        - `NormalizesTo(<A as IntoParallelIteratorIndir>::Iter)` cycle overflow
+                      - `AliasRelate(<A as IntoParallelIteratorIndir>::Iter, ?fresh)`
+                        - `NormalizesTo(<A as IntoParallelIteratorIndir>::Iter)` cycle overflow
+                      - `AliasRelate(Box<A>, <B as IntoParallelIteratorIndir>::Iter)`
+                        - `NormalizesTo(<B as IntoParallelIteratorIndir>::Iter)`
+                          - via impl
+                            - `TraitPredicate(Box<B>: IntoParallelIterator)`
+                              - via impl
+                                - `TraitPredicate(Box<B>: ParallelIterator)`
+                                  - `AliasRelate(Box<B>, <A as IntoParallelIteratorIndir>::Iter)`
+                                    - `NormalizesTo(<A as IntoParallelIteratorIndir>::Iter)` cycle overflow
+                                  - `AliasRelate(<A as IntoParallelIteratorIndir>::Iter, ?fresh)` provisional cache hit
+                                  - `AliasRelate(Box<B>, <B as IntoParallelIteratorIndir>::Iter)`
+                                    - `NormalizesTo(<B as IntoParallelIteratorIndir>::Iter)` cycle overflow
+                                  - `AliasRelate(<B as IntoParallelIteratorIndir>::Iter, ?fresh)`
+                                    - `NormalizesTo(<B as IntoParallelIteratorIndir>::Iter)` cycle overflow
+                                  - `AliasRelate(Box<B>, <C as IntoParallelIteratorIndir>::Iter)`
+                                    - `NormalizesTo(<C as IntoParallelIteratorIndir>::Iter)`
+                                      - via impl
+                                        - `TraitPredicate(Box<C>: IntoParallelIterator)`
+                                          - via impl
+                                            - `TraitPredicate(Box<C>: ParallelIterator)`
+                                              - `AliasRelate(Box<C>, <A as IntoParallelIteratorIndir>::Iter)`
+                                                - `NormalizesTo(<A as IntoParallelIteratorIndir>::Iter)` cycle overflow
+                                              - `AliasRelate(<A as IntoParallelIteratorIndir>::Iter, ?fresh)` provisional cache hit
+                                              - `AliasRelate(Box<C>, <B as IntoParallelIteratorIndir>::Iter)`
+                                                - `NormalizesTo(<B as IntoParallelIteratorIndir>::Iter)` cycle overflow
+                                              - `AliasRelate(<B as IntoParallelIteratorIndir>::Iter, ?fresh)` provisional cache hit
+                                              - `AliasRelate(Box<C>, <C as IntoParallelIteratorIndir>::Iter)`
+                                                - `NormalizesTo(<C as IntoParallelIteratorIndir>::Iter)` cycle overflow
+                                              - `AliasRelate(<C as IntoParallelIteratorIndir>::Iter, ?fresh)`
+                                                - `NormalizesTo(<C as IntoParallelIteratorIndir>::Iter)` cycle overflow
+                                              - `AliasRelate(Box<C>, <D as IntoParallelIteratorIndir>::Iter)`
+                                                - `NormalizesTo(<D as IntoParallelIteratorIndir>::Iter)`
+                                                  - via impl
+                                                    - `TraitPredicate(Box<D>: IntoParallelIterator)` cycle overflow
+                                      - changed provisional result, reevaluate
+                                        - reevaluate cycle: ?
+                                          - reevaluate `NormalizesTo(<C as IntoParallelIteratorIndir>::Iter)` cycle rigid
+                                          - reevaluate `AliasRelate(Box<C>, <C as IntoParallelIteratorIndir>::Iter)`
+                                            - `NormalizesTo(<C as IntoParallelIteratorIndir>::Iter)` cycle rigid
+                                          - reevaluate `TraitPredicate(Box<C>: ParallelIterator)`
+                                            - `AliasRelate(Box<C>, <A as IntoParallelIteratorIndir>::Iter)` provisional cache hit
+                                            - `AliasRelate(<A as IntoParallelIteratorIndir>::Iter, ?fresh)` provisional cache hit
+                                            - `AliasRelate(Box<C>, <B as IntoParallelIteratorIndir>::Iter)` provisional cache hit
+                                            - `AliasRelate(<B as IntoParallelIteratorIndir>::Iter, ?fresh)` provisional cache hit
+                                            - `AliasRelate(Box<C>, <C as IntoParallelIteratorIndir>::Iter)` provisional cache hit
+                                            - `AliasRelate(<D as IntoParallelIteratorIndir>::Iter, ?fresh)` provisional cache hit
+                                  - `AliasRelate(Box<B>, <D as IntoParallelIteratorIndir>::Iter)`
+                                    - `NormalizesTo(<D as IntoParallelIteratorIndir>::Iter)` provisional cache hit
+                          - changed provisional result, reevaluate
+                            - reevaluate cycle: ?
+                              - reevaluate `NormalizesTo(<B as IntoParallelIteratorIndir>::Iter)` cycle rigid
+                              - reevaluate `AliasRelate(Box<B>, <B as IntoParallelIteratorIndir>::Iter)`
+                                - `NormalizesTo(<B as IntoParallelIteratorIndir>::Iter)` cycle rigid
+                              - `TraitPredicate(Box<B>: ParallelIterator)` :skull:
+                                - `AliasRelate(Box<B>, <A as IntoParallelIteratorIndir>::Iter)` reevaluate, no changes
+                                - `AliasRelate(Box<B>, <B as IntoParallelIteratorIndir>::Iter)` provisional cache hit
+                                - `AliasRelate(<B as IntoParallelIteratorIndir>::Iter, ?fresh)` reevaluate
+                                  - `NormalizesTo(<B as IntoParallelIteratorIndir>::Iter)` cycle rigid
+                                - `AliasRelate(Box<B>, <C as IntoParallelIteratorIndir>::Iter)` reevaluate
+                                  - reevaluate cycle: ?
+                                    - reevaluate `NormalizesTo(<B as IntoParallelIteratorIndir>::Iter)` cycle rigid
+                                    - reevaluate `AliasRelate(Box<C>, <B as IntoParallelIteratorIndir>::Iter)`
+                                    - reevaluate `TraitPredicate(Box<C>: ParallelIterator)`
+                                      - `AliasRelate(Box<C>, <A as IntoParallelIteratorIndir>::Iter)` provisional cache hit
+                                      - `AliasRelate(<A as IntoParallelIteratorIndir>::Iter, ?fresh)` provisional cache hit
+                                      - `AliasRelate(Box<C>, <B as IntoParallelIteratorIndir>::Iter)` provisional cache hit
+                                      - `AliasRelate(<B as IntoParallelIteratorIndir>::Iter, ?fresh)` provisional cache hit
+                                      - `AliasRelate(Box<C>, <C as IntoParallelIteratorIndir>::Iter)` provisional cache hit
+                                      - `AliasRelate(<C as IntoParallelIteratorIndir>::Iter, ?fresh)` provisional cache hit
+                                      - `AliasRelate(Box<C>, <D as IntoParallelIteratorIndir>::Iter)` provisional cache hit
