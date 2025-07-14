@@ -962,7 +962,7 @@ assumption: we actually need two things, reevaluate with repop provisional cache
 
 ## impl cont
 
-Interesting fun fact: we may evaluate nested goals of some goal and then evaluaitng the actual goal is a provisional or global cache hit.
+Interesting fun fact: we may evaluate nested goals of some goal and then evaluating the actual goal is a provisional or global cache hit.
 - this happens in case reevaluating an earlier goal already depends a goal we'd be evaluating later or alternatively, we've dropped a goal from the provisional cache
 - what can we do
   - avoid using the global cache or the provisional cache entry here
@@ -1001,19 +1001,22 @@ Separate question: is rerunning cycles necessary in general, could we avoid it?
 - when reevaluating a goal, we copy the list of all parents, and do the following for all of them:
     - if its result changed, reevaluate all parents, lazily adding the `NodeId`s of each parents to the list of the new node
     - if its result did not change, copy the list of parents to the new node
-- we've got a N-to-1 relationship between the parents and the set of nested goals used. if the store th node_id's of nested goals used by each `parent`, we can add all nodes whose list of cycle heads does not contain the current goal to the provisional cache, at least the ones which are already valid in the first iteration 
+- we've got a N-to-1 relationship between the parents and the set of nested goals used. if the store the node_id's of nested goals used by each `parent`, we can add all nodes whose list of cycle heads does not contain the current goal to the provisional cache, at least the ones which are already valid in the first iteration 
 - this means whether a nested goal has changed changes its parent from a reuse to a new node. Lazily create nodes when finishing evaluation instead of eagerly?
-    - instead of eagerly setting the parent, we only set it once we've finished evaluating the parent goal, before then all children are tracked in the parents `StackEntry`.
+    - instead of eagerly setting the parent, we only set it once we've finished evaluating the parent goal, before then all children are tracked in the parents `StackEntry`
+    - actually: `evaluate_goal` adds the `node_id` of the nested goal to the stack entry of the parent. Finishing the parent updates the `parent` of all nested goals/provisional cache hits.
 
-### important trees
+### the search tree of a reevaluation
 
--  A
-    - B needs to be reevaluated when reevaluating A as E changed
-        - C does not change when reevaluating A
-            - D changes when reevaluating A
-                - E changes when reevaluating A
-                    - D
-                - A
-        - E cache hit
+When reevaluating we've got new nodes for goals we've reevaluated.
 
-We never reevaluate `E` directly here, we only invalidate it by changing the final result of `D`. We've rebased `E` over `D`. Is is sufficient to add `B` as both a parent of `E` and `D`? Store the `NodeId` of goals we've rebased over and add the current goal as a parent to all of them.
+This node is the parent of both
+- other nodes we're reevaluated just now
+- unchanged nodes from the previous iteration we've accessed
+
+This node has the same parents as the previous evaluation, but mapped
+- if during reeval we pop the parent without reeval, we use the old node id
+- we also rebuild the stack at all provisional cache hits of this goal
+    - if all their nested goals don't change, reuse old node id
+- if they changed, use the new `NodeId`
+
