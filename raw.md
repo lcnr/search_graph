@@ -1020,3 +1020,242 @@ This node has the same parents as the previous evaluation, but mapped
     - if all their nested goals don't change, reuse old node id
 - if they changed, use the new `NodeId`
 
+### reevaluating: figuring out the order
+
+We want to walk through the reevaluated graph in order. For cycle head accesses,
+the order is just the order of `NodeId`/`CycleId`.
+
+For uses of a single provisional cache entry its just its list of parents. As some of them may have
+been reevaluated while others have not, their `NodeId` is not well-ordered. Better idea:
+
+Reevaluate by actually recursing into nested goals. Each node has `parents: Vec<(parent_id, Vec<child_id>)>`, put the goal on the stack and
+- for each child, check whether the goal we're reevaluating is a cycle head of it
+  - if no, try to add it to the provisional cache (if its not a cycle head access)
+    - if it depends on the current goal we're adding, only do so for nested goals of its first fixpoint iteration
+  - if yes, and the child is a use of the current cycle head, mark the current goal as `needs_reeval`
+  - if yes, and the child is an ordinary nested goal, put the child on the stack and recurse
+    - if the child has changed, mark the current goal as `needs_reeval`
+  - if yes, and the child is a provisional cache hit, we will have already visited that `node_id` before.
+    - if that resulted in a different result, set `needs_reeval`
+- if the goal is marked as `needs_reeval`, reevaluate this goal "as normal". We strip all `provisional_cache_hits` from its nested goals before doing so
+  - using a nested goal as provisional cache entry does not add anything to `nested_goals` of this `StackEntry`
+- if not, add its `(node_id, Vec<child_id>)` to the `nested_goals` of its parent
+- once the parent is done, it adds `parent_id, Vec<child_id>` to the `parents` of this goal
+
+### sidenote: evaluating nested goals of the current is ass
+
+It makes things harder and more annoying. What if the evaluation changes and ends up being global/a provisional cache hit.
+
+Easier: can we readd provisional cache entries which did not change and mutate `has_been_used` on access instead?
+- the answer should be yes
+- need to make sure we correctly handle rebasing
+
+### sidenote: having `(parent, Vec<child_id>)` is insufficient
+
+At least if reruns have the same node id:
+- evaluations share the same `NodeId` if none of their children changed their result
+
+### why do we care about keeping `NodeId`s the same
+
+To deduplicate work. We want to only visit each `NodeId` once. How would we do that?
+- each `NodeId` always has the exact same stack, with different provisional results
+- given that stack, it's got a set of nested goals, where each goal may have been computed multiple times, so for each nested goal we have a set of `NodeId`s
+
+## another idea: change provisional cache entry to store path X provisional result
+
+don't discard entries, ever :thinking: ...
+
+## nyaaaa?
+
+to fix perf here, we need to avoid reevaluating nested goals when reevaluating the parent.
+
+we can do this if the reevaluations of the nested goal:
+- only access parent as cycle head in a shared `node_id`
+
+each `node_id` needs to know the path when it was first evaluated. This is
+used when actually reevaluating it to make sure it doesn't access weird shit
+if its behavior changes.
+
+---
+
+The whole reason we are using lazy reevaluation is to hide the fact that the search graph has an exponential size. This means we must not separately walk into the original evaluation and its reevaluations.
+
+We can do this if all the evaluations have equal nested goal results. In this case there's no need to reeval. However, if we reevaluate this goal later and its result changes, we now need to reevaluate all goals which used it as a nested goal.
+
+This needs to *lazily* branch between different reevaluations, as we'd otherwise get immediate exponential blowup again.
+
+A goal only has multiple parents if the parent evaluation depends on a separate nested goals whose result also differs due to a rerun.
+
+---
+
+We can have the tree
+- 0
+  - 1 initial
+    - 2
+      - 0 cycle
+      - 1 cycle
+    - 3
+  - 1 reeval (nested goals remain unchanged)
+    - 4 unchanged
+      - 0 cycle
+      - 1 cycle
+    - 3
+- 0
+  - 1 initial
+    - 5 unchanged 
+      - 0 cycle
+      - 1 cycle
+    - 3
+  - 7 unchanged
+    - 6 now changed in second iterations of 0 and 1
+      - 0 cycle
+      - 1 cycle
+    - 3
+
+Reevaluating 1 causes us to reevaluate 2, while 3 is shared.
+If reevaluating a parent goal of 0 later means the result of 2 stays the same
+but the result of 4 changes, we only need to reevaluate 0 from the second iteration
+of 0.
+
+As a more complete example:
+- A0
+  - B0
+    - C0
+      - D0
+        - A cycle
+        - B cycle
+      - E
+  - rerun B0
+    - C0
+      - D1
+        - A cycle
+        - B cycle
+- rerun A0
+  - B1
+    - C0
+      - D2
+        - A cycle
+        - B cycle
+      - E
+  - rerun B
+    - C1
+      - D3
+        - A cycle
+        - B cycle
+
+Concretely, we need to store the following info for accesses of A
+
+- stack: [B0 initial, C0 initial, D0 initial]
+- stack: [B0 rerun, C0 initial, D1 initial]
+
+---
+
+We need to go from all its uses as cycle head to their parent goals.
+Each goal then has a `IndexMap<(Vec<nested_goal_id>, Vec<parent_id>)>`.
+If reevaluating a goal with its original stack changes its output, we need to reevaluate all of its parents. To do this, we need to know for each of the parent,
+the first time that parent has been evaluated with the changed child as a nested goal!
+
+---
+
+We create a new node when actually having to reeval a goal. We can remember the stack of that node at this point. Let's look at a case where there are reuse nested and parent nodes
+
+- A
+  - B0
+    - C0
+      - D0
+        - E0
+          - B cycle
+          - A cycle
+        - F0
+          - A cycle
+      - B cycle
+    - D cache hit D0
+  - rerun
+    - C1
+      - D0
+        - E1
+          - B cycle
+          - A cycle
+        - F0
+      - B cycle
+    - D cache hit D0
+
+When rerunning A we've got the following info:
+
+Uses of A as cycle head:
+- stack: [E0 initial, D0 initial, C0 initial, B0 initial]
+- stack: [F0 initial, D0 initial, C0 initial, B0 initial]
+- stack: [E1 initial, D0 initial, C1 initial, B0 rerun]
+
+Nodes with multiple parents:
+- D0:
+  - with children [E0, F0]: [C0, cache hit B0],
+  - children [E1, F0]: [C1, cache hit B0]
+
+How do we get the relevant info when nodes change.
+
+We rerun E0 using the stack from its use as cycle head.
+E0 has a single parent D0, we mark it for rerun if E0 changed.
+D0 has multiple parents. If its result changed, we mark its initial parent C0 for rerun and queue all parents which relied on E0.
+C0 is boring. Let's say this one didn't change.
+We then need to figure out whether E1 or C1 happened first... TODO
+
+We rerun E1 using the stack from its use as cycle head.
+Rerunning D0 if it changed should only reevealuates C1 and B0, not C0
+
+---
+
+- A
+  - B0
+    - C0
+      - D0
+        - E0
+          - F0
+            - B cycle
+            - A cycle
+      - B cycle
+  - rerun
+    - C1
+      - D0
+        - E0
+          - F1
+            - B cycle
+            - A cycle
+      - B cycle
+
+Here if F1 changes, we only need to reevaluate C1, not C0. How do we track this?
+
+C0 and C1 only differ due to the provisional result of one of its heads. F1 directly accesses the provisional result of A and B. We only ever split parents when reevaluating a head and can store that into the "parents list". When creating a new node, we store the cycle head and its itereation at which we've split.
+
+So walking up the evaluation of F1, we know that it depends on the first rerun of B.
+D0 has two parents, where the first is used in `iter(B) < 1` and the second one in `iter(B) >= 1`, we only need to rerun C1 because of this.
+
+--- 
+
+What do we do if we rerun a shared node, and that rerun now depends on the value of that cycle head?
+
+- A
+  - B0
+    - C0
+      - D0
+        - B 
+      - A
+  - rerun
+    - C0
+      - D1 unchanged
+        - B
+      - A
+- rerun
+  - lazy reeval C0 (didn't depend on the value of B, now does)
+    - D[0|1]
+      - B
+    - A changed
+    - B!
+
+We initially reevaluate C0 with the stack when it was first used. If this now depends on the value of B we need to reevaluate it again for `iter(B) = 1`
+
+For this to make sense, we need to track on which iteration of a cycle head we depend on. We'd need to use a provisional cache entry for `D` which states `0 < iter(B) <= 1`
+while using the cycle head requires `iter(B) = 0`
+
+
+
